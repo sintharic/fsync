@@ -59,6 +59,33 @@ BAK = "test"+os.sep+"BAK"
 
 def sync_directory(src_path, dst_path, bak_path=None, num_bak=5, 
                    include_subdirs=True, sync_deleted=False, logger=logging):
+  """ synchronize the contents of a destination directory with a source directory
+  
+  Files and folders in <src_path> are mirrored in <dst_path>. If specified, 
+  older pre-existing versions in <dst_path> that would be overwritten are first 
+  backed up into <bak_path>, where the maximum number of stored older versions
+  is given by <num_bak>.
+
+  Parameters
+  ----------
+  src_path : str
+    source path, whose content is mirrored in <dst_path>
+  dst_path : str
+    destination path, which is synchronized with <src_path>
+  bak_path : str
+    backup path, in which previous versions of files are stored.
+  num_bak : int
+    number of backups to kept for each file
+  include_subdirs : bool
+    whether to include the whole directory tree of <src_path> or just the files
+    in the root directory.
+  sync_deleted : bool
+    if True, files deleted in <src_path> will also be removed from <dst_path>
+    (or moved to <bak_path> if that is given)
+  logger : logging.Logger
+    Logger, to which potential errors and warnings are redirected
+
+  """
 
   # sanity check for src_path:
   if not os.path.isdir(src_path): 
@@ -149,7 +176,7 @@ def sync_directory(src_path, dst_path, bak_path=None, num_bak=5,
           bak_stub = bak_path + os.sep + os.path.split(file)[0]
           os.makedirs(bak_stub, exist_ok=True)
           file_stub, file_ext = os.path.splitext(bak_path+os.sep+file)
-          dest_file = file_stub+"_fsync"+TIMESIG+"_"+file_ext
+          dest_file = file_stub+"__fsync_"+TIMESIG+"__"+file_ext
           futil.movefile(dst_path+os.sep+file, dest_file, logger=logger)
 
   # copy the SRC's directory tree to DST
@@ -183,33 +210,37 @@ class job:
   sync_deleted = False
   LOG = logging
 
-  def __init__(self, src_path, dst_path, bak_path, num_bak=5, sync_deleted=False, name="fsync_job"):
+  def __init__(self, name, src_path=None, dst_path=None, 
+               bak_path=None, num_bak=5, sync_deleted=False):
     global TIMESIG
     TIMESIG = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    
+    self.name = name+"_"+TIMESIG+"_"+USR
 
-    self.SRC = src_path
-    self.DST = dst_path 
-    self.BAK = bak_path 
+    if src_path is not None: self.SRC = src_path
+    if dst_path is not None: self.DST = dst_path 
+    if bak_path is not None: self.BAK = bak_path 
     self.num_bak = num_bak
     self.sync_deleted = sync_deleted
-    self.name = name+"_"+TIMESIG+"_"+USR
 
   def check_single(self):
     # Sanity checks
+
     if self.SRC[-1] == os.sep: self.SRC = self.SRC[:-1]
     if self.DST[-1] == os.sep: self.DST = self.DST[:-1]
     if self.BAK[-1] == os.sep: self.BAK = self.BAK[:-1]
-    if not os.path.isdir(self.SRC): 
-      raise ValueError("Invalid SRC directory: "+self.SRC)
-    if not os.path.isdir(self.DST): 
-      raise ValueError("Invalid DST directory: "+self.DST)
-    if not os.path.isdir(self.BAK): 
-      raise ValueError("Invalid BAK directory: "+self.BAK)
+#    if not os.path.isdir(self.SRC): 
+#      raise ValueError("Invalid SRC directory: "+self.SRC)
+#    if not os.path.isdir(self.DST): 
+#      raise ValueError("Invalid DST directory: "+self.DST)
+#    if not os.path.isdir(self.BAK): 
+#      raise ValueError("Invalid BAK directory: "+self.BAK)
     if self.sync_deleted: 
       print("[WARNING] sync_deleted is NOT recommended if multiple machines or backup jobs use DST!\n")
 
-  def init_logfile(self):
-    # init log file
+  def init_logger(self):
+    # initialize Logger
+
     self.LOG = logging.getLogger('logtest')
     self.LOG.setLevel(logging.DEBUG)
     logname = self.DST+"_fsync.log"
@@ -245,8 +276,10 @@ class job:
 
 
   def sync_directory(self):
+    # Sync the entire directory tree
+
     self.check_single()
-    self.init_logfile()
+    self.init_logger()
     
     sync_directory(self.SRC, self.DST, self.BAK, num_bak=self.num_bak, 
                    sync_deleted=self.sync_deleted, logger=self.LOG)
@@ -255,8 +288,25 @@ class job:
 
 
   def sync_individual(self, include=None, exclude=None):
+    """ Sync the individual folders contained by <SRC>
+
+    This starts an individual sync job for each first-level subdirectory and 
+    lets you include or exclude only some of them. By default, all of them are
+    synchronized, including the root directory.
+
+    Parameters
+    ----------
+    include : list of str or None
+      list of subdirectories which are to be synchronized. To include the root
+      directory, add "." to this list.
+    exclude : list of str or None
+      list of subdirectories that are NOT to be synchronized, where "." 
+      represents the root directory. Only takes effect if include is None.
+
+    """
+
     self.check_single()
-    self.init_logfile()
+    self.init_logger()
 
     if include is not None:
       if isinstance(include, str): include = [include]
@@ -265,7 +315,7 @@ class job:
       if isinstance(exclude, str): exclude = [exclude]
       self.LOG.info("exclude = "+str(exclude)+"\n")
 
-    # root directory
+    # sync root directory
     sync_root = True
     if (exclude is not None) and (include is None) and ("." in exclude): 
       sync_root = False
@@ -276,7 +326,7 @@ class job:
       sync_directory(self.SRC, self.DST, self.BAK, num_bak=self.num_bak, 
                      include_subdirs=False, sync_deleted=self.sync_deleted, logger=self.LOG)
     
-    # subdirectories
+    # sync subdirectories
     src_projects = [self.SRC+os.sep+obj for obj in os.listdir(self.SRC) if os.path.isdir(self.SRC+os.sep+obj)]
     bak_projects = [self.BAK+os.sep+os.path.split(obj)[-1] for obj in src_projects]
 
@@ -301,8 +351,10 @@ class job:
 
 
   def sync_root(self):
+    # synchronize only the files in the root directory
+
     self.check_single()
-    self.init_logfile()
+    self.init_logger()
     
     sync_directory(self.SRC, self.DST, self.BAK, num_bak=self.num_bak, 
                      include_subdirs=False, sync_deleted=self.sync_deleted, logger=self.LOG)

@@ -62,14 +62,14 @@ def update_test_files(i=0):
 # create sync job
 def sync_directory(i=0):
   update_test_files(i)
-  JOB = fsync.job(src_path=SRC, dst_path=DST, bak_path=BAK, 
+  JOB = fsync.job("whole", src_path=SRC, dst_path=DST, bak_path=BAK, 
                   num_bak=2, name="test")
   JOB.EXCLUDE = ["Folder2"]
   JOB.sync_directory()
 
 def sync_individual(i=0):
   update_test_files(i)
-  JOB = fsync.job(src_path=SRC, dst_path=DST, bak_path=BAK, 
+  JOB = fsync.job("indiv", src_path=SRC, dst_path=DST, bak_path=BAK, 
                   num_bak=2, name="test")
   JOB.sync_individual(exclude="Folder2")
 
