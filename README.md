@@ -1,12 +1,12 @@
 fsync
 =====
 
-A Python-based backend for version-controlled Cloud / NAS / File Backup management.
+A Python-based backend for version-controlled Cloud / NAS / File Backup management **in development**.
 
 Use cases
 ---------
 Do you often acquire data on one device but work with the data on a different device? 
-If so, the established file synchronization solutions might not provide exactly what you need and this repository could help you to develop your own solution.
+If so, the established file synchronization solutions might not provide exactly what you need and this repository could help you automize your workflow.
 Typical use cases not only include scientific computations and their analysis, but can also come up with creative work like video and audio production.
 
 Contrary to a typical (potentially expensive) Cloud storage solution, this library is (by default) set up for one-way synchronization: 
