@@ -60,27 +60,26 @@ def update_test_files(i=0):
       fid.write("this is version %i\n" % i)
 
 # create sync job
-def sync_folder(i=0):
+def sync_directory(i=0):
   update_test_files(i)
   JOB = fsync.job(src_path=SRC, dst_path=DST, bak_path=BAK, 
                   num_bak=2, name="test")
   JOB.EXCLUDE = ["Folder2"]
-  JOB.sync_folder()
+  JOB.sync_directory()
 
-def sync_subfolders(i=0):
+def sync_individual(i=0):
   update_test_files(i)
   JOB = fsync.job(src_path=SRC, dst_path=DST, bak_path=BAK, 
                   num_bak=2, name="test")
-  JOB.EXCLUDE = ["Folder2"]
-  JOB.sync_subfolders()
+  JOB.sync_individual(exclude="Folder2")
 
 if __name__=="__main__": 
   #setup_directories()
   #for i in range(5):
-  #  sync_folder(i)
+  #  sync_directory(i)
   #  sleep(2)
 
   setup_directories()
   for i in range(5):
-    sync_subfolders(i)
+    sync_individual(i)
     sleep(2)
