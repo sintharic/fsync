@@ -46,42 +46,54 @@ import futil
 from datetime import datetime
 import logging, traceback
 
-TIMESIG = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+TIMESIG = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 USR = os.getlogin()
 
-
-
-# ----- Main Functions ----- #
-
-def copy2bak(rel_filepath, bak_path, num_bak=1e85, logger=logging):
+SRC = "test"+os.sep+"SRC"
+DST = "test"+os.sep+"DST"
+BAK = "test"+os.sep+"BAK"
 
 
 
-def sync_directory(src_path, dst_path, bak_path, num_bak=5, sync_deleted=False, logger=logging):
+# ----- Main Function ----- #
 
-  # gather all absolute file paths for the project
-  _,project = os.path.split(src_path)
-  if not os.path.isdir(src_path): raise ValueError("Invalid SRC directory "+src_path)
-  if os.path.isdir(bak_path):
-    prev_bak_versions = sorted([obj for obj in os.listdir(bak_path) if os.path.isdir(bak_path+os.sep+obj)])
-  else:
-    prev_bak_versions = []
-  bak_path = bak_path+os.sep+TIMESIG+"-"+USR
+def sync_directory(src_path, dst_path, bak_path=None, num_bak=5, 
+                   include_subdirs=True, sync_deleted=False, logger=logging):
 
-  #DEBUG
-  #logger.info(" SRC = "+src_path)
-  #logger.info(" DST = "+dst_path)
-  #logger.info(" BAK = "+bak_path+"\n")
+  # sanity check for src_path:
+  if not os.path.isdir(src_path): 
+    raise ValueError("Invalid SRC directory "+src_path)
+  _, project = os.path.split(src_path) #TODO: erase if not needed
+
+  # sanity check for dst_path:
+  if not os.path.isdir(dst_path):
+    dst_stub, check = os.path.split(dst_path)
+    if not os.path.isdir(dst_stub): 
+      raise ValueError("Invalid DST directory "+dst_path)
+
+  # sanity check for bak_path:
+  if bak_path is not None:
+    if not os.path.isdir(bak_path):
+      bak_stub, _ = os.path.split(bak_path)
+      if os.path.isdir(bak_stub): 
+        futil.mkdirtree(bak_path)
+      else: 
+        bak_path = None
 
   # copy whole folder if directory is completely new
   if not os.path.isdir(dst_path):
     logger.info(" mirroring SRC's whole directory to DST\n")
-    if not DEBUG: futil.copytree(src_path, dst_path)
+    if not DEBUG: futil.copytree(src_path, dst_path, logger=logger)
     return
 
-  # get contents of existing directories
-  src_folders, src_files = futil.relDirsFiles(src_path)
-  _, dst_files = futil.relDirsFiles(dst_path)
+  # get contents and modification times of existing directories
+  if include_subdirs:
+    src_folders, src_files = futil.relDirsFiles(src_path)
+    _, dst_files = futil.relDirsFiles(dst_path)
+  else:
+    src_folders = []
+    src_files = [obj for obj in os.listdir(src_path) if os.path.isfile(src_path+os.sep+obj)]
+    dst_files = [obj for obj in os.listdir(dst_path) if os.path.isfile(dst_path+os.sep+obj)]
   src_time = [os.path.getmtime(src_path+os.sep+obj) for obj in src_files]
   dst_time = [os.path.getmtime(dst_path+os.sep+obj) for obj in dst_files]
 
@@ -93,116 +105,71 @@ def sync_directory(src_path, dst_path, bak_path, num_bak=5, sync_deleted=False, 
     if i_src>=0: 
       if src_time[i_src] > dst_time[i_dst]+1:
         changed_files.append(file)
-      elif sync_deleted: deleted_files.append(file)
+      elif sync_deleted: 
+        deleted_files.append(file)
 
-  # create new backup version if files have changed / were deleted
-  if (len(changed_files) > 0) or (len(deleted_files) > 0):
-    logger.info(" creating BAK"+os.sep+bak_path.split(os.sep)[-1])
-    if not DEBUG: os.makedirs(bak_path, exist_ok=True)
+  if bak_path is not None:
+    # move deleted files to BAK
+    if len(deleted_files) > 0:
+      for file in deleted_files: 
+        logger.info(" (deleted) '"+file+"' moving from DST to BAK")
+        if not DEBUG: 
+          bak_stub = bak_path + os.sep + os.path.split(file)
+          os.makedirs(bak_stub, exist_ok=True)
+          futil.movefile(dst_path+os.sep+file, bak_path+os.sep+file, logger=logger)
 
-  # move deleted files to BAK
-  if len(deleted_files) > 0:
-    for file in deleted_files: 
-      logger.info(" (deleted) '"+file+"' moving from DST to BAK")
-      my_bak_path,name = os.path.split(bak_path+os.sep+file)
-      if not DEBUG: 
-        os.makedirs(my_bak_path, exist_ok=True)
-        futil.movefile(dst_path+os.sep+file, my_bak_path+os.sep+name)
+    # copy changed files to BAK
+    if len(changed_files) > 0:
+      for file in changed_files: 
+        logger.info(" (changed) '"+file+"' moving from DST to BAK")
+        file_stub, file_ext = os.path.splitext(os.path.split(file)[-1])
+        bak_folder = bak_path + os.sep + os.path.split(file)[0]
+        
+        if (num_bak is not None) and os.path.isdir(bak_folder):
+          # make list of previous backup versions
+          prev_bak_versions = []
+          for obj in os.listdir(bak_folder):
+            full_obj = bak_folder+os.sep+obj
+            check_stub, check_ext = os.path.splitext(obj)
+            check_stub = obj[:len(file_stub)]
+            if check_ext==file_ext and check_stub==file_stub:
+              prev_bak_versions.append(full_obj)
+          #print(len(prev_bak_versions))#DEBUG
 
-  # copy changed files to BAK
-  if len(changed_files) > 0:
-    for file in changed_files: 
-      logger.info(" (changed) '"+file+"' moving from DST to BAK")
-      my_bak_path,name = os.path.split(bak_path+os.sep+file)
-      if not DEBUG: 
-        os.makedirs(my_bak_path, exist_ok=True)
-        futil.movefile(dst_path+os.sep+file, my_bak_path+os.sep+name)
+          # remove oldest backup if there are more than num_bak
+          if len(prev_bak_versions) > num_bak-1:
+            #print("HERE")#DEBUG
+            prev_bak_versions = sorted(prev_bak_versions)
+            if not DEBUG:
+              logger.info("           removing oldest BAK version(s)")
+              for obj in prev_bak_versions[:-(num_bak-1)]: os.remove(obj)
+
+        # move DST's previous version to bak
+        if not DEBUG: 
+          bak_stub = bak_path + os.sep + os.path.split(file)[0]
+          os.makedirs(bak_stub, exist_ok=True)
+          file_stub, file_ext = os.path.splitext(bak_path+os.sep+file)
+          dest_file = file_stub+"_fsync"+TIMESIG+"_"+file_ext
+          futil.movefile(dst_path+os.sep+file, dest_file, logger=logger)
 
   # copy the SRC's directory tree to DST
   dst_tree = [dst_path+os.sep+obj for obj in src_folders]
   if (len(dst_tree) > 0) and not DEBUG: 
-    for path in dst_tree: os.makedirs(path, exist_ok=True)
+    futil.mkdirtree(dst_tree)
 
   # copy changed files
   for file in changed_files:
     logger.info(" (changed) '"+file+"' mirroring from SRC to DST")
-    if not DEBUG: futil.copyfile(src_path+os.sep+file, dst_path+os.sep+file)
+    if not DEBUG: 
+      futil.copyfile(src_path+os.sep+file, dst_path+os.sep+file, logger=logger)
 
   # copy new files
   for file in src_files:
     if not os.path.isfile(dst_path+os.sep+file):
       logger.info(" (new) '"+file+"' mirroring from SRC to DST")
-      if not DEBUG: futil.copyfile(src_path+os.sep+file, dst_path+os.sep+file)
-
-  # clean up oldest backup version(s)
-  if len(changed_files) > 0:
-    if len(prev_bak_versions) >= num_bak:
-      for iBak in range(len(prev_bak_versions)-num_bak+1):
-        logger.info(" deleting oldest backup "+prev_bak_versions[iBak])
-        if not DEBUG: 
-          futil.removetree(BAK+os.sep+prev_bak_versions[iBak])
+      if not DEBUG: 
+        futil.copyfile(src_path+os.sep+file, dst_path+os.sep+file, logger=logger)
   
-  logger.info("")
-
-
-
-def sync_files(src_path, dst_path, bak_path, num_bak=5, sync_deleted=False, logger=logging):
-  """
-  Copy ONLY the contained files in [src_path] to [dst_path]. Any subdirectories 
-  in src_path are skipped!
-  For all files that have been changed/deleted since last sync, backups are kept
-  in [bak_path]. If there are more than [num_bak] backups, the oldest one is deleted.
-  """
-
-  _,project = os.path.split(src_path)
-  if not os.path.isdir(src_path): raise ValueError("Invalid SRC directory.")
-  if not os.path.isdir(bak_path):
-    logger.info(" creating %s\n" % bak_path)
-    if not DEBUG: os.makedirs(bak_path)
-  if not os.path.isdir(dst_path):
-    logger.info(" creating %s\n" % dst_path)
-    if not DEBUG: os.makedirs(dst_path)
-  prev_bak_versions = sorted([bak_path+os.sep+obj for obj in os.listdir(bak_path) if os.path.isdir(bak_path+os.sep+obj)])
-  bak_path = bak_path+os.sep+TIMESIG+"-"+USR
-  os.makedirs(bak_path, exist_ok=True)
-  src_files = [obj for obj in os.listdir(src_path) if os.path.isfile(src_path+os.sep+obj)]
-  dst_files = [obj for obj in os.listdir(dst_path) if os.path.isfile(dst_path+os.sep+obj)]
-
-  #DEBUG
-  #logger.info(project+":")
-  #logger.info(" SRC = "+src_path)
-  #logger.info(" DST = "+dst_path)
-  #logger.info(" BAK = "+bak_path+"\n")
-  
-  changed_files = []
-  for file in src_files:
-
-    # file already existed
-    if file in dst_files:
-      src_time = os.path.getmtime(src_path+os.sep+file)
-      dst_time = os.path.getmtime(dst_path+os.sep+file)
-
-      # file has changed
-      if (src_time > dst_time+1):
-        changed_files.append(file)
-        logger.info(" (changed) '"+file+"' moving from DST to BAK")
-        if not DEBUG: 
-          futil.movefile(dst_path+os.sep+file, bak_path+os.sep+file)
-        logger.info(" (changed) '"+file+"' mirroring from SRC to DST")
-        if not DEBUG: futil.copyfile(src_path+os.sep+file, dst_path+os.sep+file)
-
-    # file is new
-    else:
-      logger.info(" (new) '"+file+"' mirroring from SRC to DST")
-      if not DEBUG: futil.copyfile(src_path+os.sep+file, dst_path+os.sep+file)
-
-  # clean up oldest backup versions
-  if len(changed_files) > 0:
-    if len(prev_bak_versions) >= num_bak:
-      for iBak in range(len(prev_bak_versions)-num_bak+1):
-        logger.info(" deleting oldest backup "+prev_bak_versions[iBak])
-        if not DEBUG: futil.removetree(prev_bak_versions[iBak])
-
   logger.info("")
 
 
@@ -214,14 +181,12 @@ class job:
   BAK = "__invalid__"
   num_bak = 5
   sync_deleted = False
-  INCLUDE = []
-  EXCLUDE = []
   LOG = logging
 
   def __init__(self, src_path, dst_path, bak_path, num_bak=5, sync_deleted=False, name="fsync_job"):
     global TIMESIG
-    TIMESIG = datetime.now().strftime("%Y-%m-%d_%Hh%M")
-    
+    TIMESIG = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
     self.SRC = src_path
     self.DST = dst_path 
     self.BAK = bak_path 
@@ -234,12 +199,16 @@ class job:
     if self.SRC[-1] == os.sep: self.SRC = self.SRC[:-1]
     if self.DST[-1] == os.sep: self.DST = self.DST[:-1]
     if self.BAK[-1] == os.sep: self.BAK = self.BAK[:-1]
-    if not os.path.isdir(self.SRC): raise ValueError("Invalid SRC directory: "+self.SRC)
-    if not os.path.isdir(self.DST): raise ValueError("Invalid DST directory: "+self.DST)
-    if not os.path.isdir(self.BAK): raise ValueError("Invalid BAK directory: "+self.BAK)
-    if self.sync_deleted: print("[WARNING] sync_deleted is NOT recommended if multiple machines or backup jobs use DST!\n")
+    if not os.path.isdir(self.SRC): 
+      raise ValueError("Invalid SRC directory: "+self.SRC)
+    if not os.path.isdir(self.DST): 
+      raise ValueError("Invalid DST directory: "+self.DST)
+    if not os.path.isdir(self.BAK): 
+      raise ValueError("Invalid BAK directory: "+self.BAK)
+    if self.sync_deleted: 
+      print("[WARNING] sync_deleted is NOT recommended if multiple machines or backup jobs use DST!\n")
 
-  def start(self):
+  def init_logfile(self):
     # init log file
     self.LOG = logging.getLogger('logtest')
     self.LOG.setLevel(logging.DEBUG)
@@ -267,8 +236,6 @@ class job:
     self.LOG.info("SRC = '"+self.SRC+"'")
     self.LOG.info("DST = '"+self.DST+"'")
     self.LOG.info("BAK = '"+self.BAK+"'")
-    self.LOG.info("EXCLUDE = "+str(self.EXCLUDE))
-    self.LOG.info("INCLUDE = "+str(self.INCLUDE)+"\n")
     self.LOG.info("num_bak = "+str(self.num_bak)+"")
     self.LOG.info("sync_deleted = "+str(self.sync_deleted)+"\n\n")
 
@@ -276,42 +243,68 @@ class job:
     self.LOG.info("\n__________________________________________________\n\n\n")
     self.LOG.handlers.clear()
 
-  def sync_folder(self):
+
+  def sync_directory(self):
     self.check_single()
-    self.start()
+    self.init_logfile()
     
     sync_directory(self.SRC, self.DST, self.BAK, num_bak=self.num_bak, 
                    sync_deleted=self.sync_deleted, logger=self.LOG)
     
     self.finish()
 
-  def sync_subfolders(self):
+
+  def sync_individual(self, include=None, exclude=None):
     self.check_single()
-    self.start()
+    self.init_logfile()
+
+    if include is not None:
+      if isinstance(include, str): include = [include]
+      self.LOG.info("include = "+str(include)+"\n")
+    if (exclude is not None) and (include is None):
+      if isinstance(exclude, str): exclude = [exclude]
+      self.LOG.info("exclude = "+str(exclude)+"\n")
 
     # root directory
-    sync_files(self.SRC, self.DST, self.BAK, num_bak=1e85, sync_deleted=self.sync_deleted, logger=self.LOG)
+    sync_root = True
+    if (exclude is not None) and (include is None) and ("." in exclude): 
+      sync_root = False
+    if (include is not None) and ("." not in include): 
+      sync_root = False
+    if sync_root:
+      self.LOG.info("_ROOT_:")
+      sync_directory(self.SRC, self.DST, self.BAK, num_bak=self.num_bak, 
+                     include_subdirs=False, sync_deleted=self.sync_deleted, logger=self.LOG)
     
     # subdirectories
     src_projects = [self.SRC+os.sep+obj for obj in os.listdir(self.SRC) if os.path.isdir(self.SRC+os.sep+obj)]
     bak_projects = [self.BAK+os.sep+os.path.split(obj)[-1] for obj in src_projects]
 
-    if len(self.INCLUDE) > 0:
-      print("[WARNING] include option not thoroughly tested yet!")
-      src_projects = [obj for obj in src_projects if os.path.split(obj)[-1] in self.INCLUDE]
-      bak_projects = [obj for obj in bak_projects if os.path.split(obj)[-1] in self.INCLUDE]
-    if len(self.EXCLUDE) > 0:
-      print("[WARNING] updated skip option not thoroughly tested yet!")
-      src_projects = [obj for obj in src_projects if os.path.split(obj)[-1] not in self.EXCLUDE]
-      bak_projects = [obj for obj in bak_projects if os.path.split(obj)[-1] not in self.EXCLUDE]
+    if include is not None:
+      print("[WARNING] INCLUDE option not thoroughly tested yet!")
+      src_projects = [obj for obj in src_projects if os.path.split(obj)[-1] in include]
+      bak_projects = [obj for obj in bak_projects if os.path.split(obj)[-1] in include]
+    if (exclude is not None) and (include is None):
+      print("[WARNING] EXCLUDE option not thoroughly tested yet!")
+      src_projects = [obj for obj in src_projects if os.path.split(obj)[-1] not in exclude]
+      bak_projects = [obj for obj in bak_projects if os.path.split(obj)[-1] not in exclude]
 
     for src_project,bak_project in zip(src_projects,bak_projects):
       _,project = os.path.split(src_project)
       dst_project = self.DST+os.sep+project
 
       self.LOG.info(project+":")
-      sync_directory(src_project, dst_project, bak_project,
+      sync_directory(src_project, dst_project, bak_project, num_bak=self.num_bak,
                      sync_deleted=self.sync_deleted, logger=self.LOG)
 
     self.finish()
 
+
+  def sync_root(self):
+    self.check_single()
+    self.init_logfile()
+    
+    sync_directory(self.SRC, self.DST, self.BAK, num_bak=self.num_bak, 
+                     include_subdirs=False, sync_deleted=self.sync_deleted, logger=self.LOG)
+    
+    self.finish()

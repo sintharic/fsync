@@ -31,34 +31,55 @@ SOFTWARE.
 import os
 import futil
 import fsync
+from time import sleep
 
 
 # test directories
-SRC = fsync.SRC #"test"+os.sep+"SRC"
-DST = fsync.DST #"test"+os.sep+"DST"
-BAK = fsync.BAK #"test"+os.sep+"BAK"
-folders = ["Folder0", "Folder1", 
+SRC = "test"+os.sep+"SRC"
+DST = "test"+os.sep+"DST"
+BAK = "test"+os.sep+"BAK"
+folders = ["Folder0", "Folder1", "Folder2",
   "Folder1"+os.sep+"Subfolder0", "Folder1"+os.sep+"Subfolder1", 
   "Folder1"+os.sep+"Subfolder1"+os.sep+"Datafolder"
 ]
 folders = [SRC + os.sep + folder for folder in folders]
-files = [folder + os.sep + "file0.dat" for folder in folders]
+files = [SRC + os.sep + "file0.dat", SRC + os.sep + "file1.dat"]
+files += [folder + os.sep + "file0.dat" for folder in folders]
 files += [folder + os.sep + "file1.dat" for folder in folders]
 
 # set up folders and files in SRC
-for path in [SRC,DST,BAK]: futil.mkdirtree(path)
-for path in folders: futil.mkdirtree(path)
+def setup_directories():
+  for path in [SRC,DST,BAK]: 
+    futil.removetree(path)
+    os.makedirs(path, exist_ok=True)
+  for path in folders: futil.mkdirtree(path)
 
-def update_test_files(i):
+def update_test_files(i=0):
   for file in files:
     with open(file, "w") as fid: 
       fid.write("this is version %i\n" % i)
 
 # create sync job
-def main(i):
+def sync_directory(i=0):
   update_test_files(i)
   JOB = fsync.job(src_path=SRC, dst_path=DST, bak_path=BAK, 
                   num_bak=2, name="test")
-  JOB.sync_folder()
+  JOB.EXCLUDE = ["Folder2"]
+  JOB.sync_directory()
 
-if __name__=="__main__": main()
+def sync_individual(i=0):
+  update_test_files(i)
+  JOB = fsync.job(src_path=SRC, dst_path=DST, bak_path=BAK, 
+                  num_bak=2, name="test")
+  JOB.sync_individual(exclude="Folder2")
+
+if __name__=="__main__": 
+  #setup_directories()
+  #for i in range(5):
+  #  sync_directory(i)
+  #  sleep(2)
+
+  setup_directories()
+  for i in range(5):
+    sync_individual(i)
+    sleep(2)
