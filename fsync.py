@@ -103,8 +103,10 @@ def sync_directory(src_path, dst_path, bak_path=None, num_bak=5,
     if not os.path.isdir(bak_path):
       bak_stub, _ = os.path.split(bak_path)
       if os.path.isdir(bak_stub): 
+        #logger.info(" Creating bak_path directory.")#DEBUG
         futil.mkdirtree(bak_path)
       else: 
+        #logger.info(" [WARNING] Invalid bak_path encountered. Using None.")#DEBUG
         bak_path = None
 
   # copy whole folder if directory is completely new
@@ -205,7 +207,7 @@ class job:
   name = "fsync_job"
   SRC = "__invalid__"
   DST = "__invalid__"
-  BAK = "__invalid__"
+  BAK = None
   num_bak = 5
   sync_deleted = False
   LOG = logging
@@ -228,7 +230,8 @@ class job:
 
     if self.SRC[-1] == os.sep: self.SRC = self.SRC[:-1]
     if self.DST[-1] == os.sep: self.DST = self.DST[:-1]
-    if self.BAK[-1] == os.sep: self.BAK = self.BAK[:-1]
+    if self.BAK is not None:
+      if self.BAK[-1] == os.sep: self.BAK = self.BAK[:-1]
 #    if not os.path.isdir(self.SRC): 
 #      raise ValueError("Invalid SRC directory: "+self.SRC)
 #    if not os.path.isdir(self.DST): 
@@ -266,7 +269,7 @@ class job:
     self.LOG.info("JOB = "+self.name)
     self.LOG.info("SRC = '"+self.SRC+"'")
     self.LOG.info("DST = '"+self.DST+"'")
-    self.LOG.info("BAK = '"+self.BAK+"'")
+    if self.BAK is not None: self.LOG.info("BAK = '"+self.BAK+"'")
     self.LOG.info("num_bak = "+str(self.num_bak)+"")
     self.LOG.info("sync_deleted = "+str(self.sync_deleted)+"\n\n")
 
@@ -331,11 +334,11 @@ class job:
     bak_projects = [self.BAK+os.sep+os.path.split(obj)[-1] for obj in src_projects]
 
     if include is not None:
-      print("[WARNING] INCLUDE option not thoroughly tested yet!")
+      #print("[WARNING] INCLUDE option not thoroughly tested yet!")
       src_projects = [obj for obj in src_projects if os.path.split(obj)[-1] in include]
       bak_projects = [obj for obj in bak_projects if os.path.split(obj)[-1] in include]
     if (exclude is not None) and (include is None):
-      print("[WARNING] EXCLUDE option not thoroughly tested yet!")
+      #print("[WARNING] EXCLUDE option not thoroughly tested yet!")
       src_projects = [obj for obj in src_projects if os.path.split(obj)[-1] not in exclude]
       bak_projects = [obj for obj in bak_projects if os.path.split(obj)[-1] not in exclude]
 
