@@ -153,7 +153,7 @@ def copytree(sourcename, destname, logger=logging):
     raise
 
 
-def removetree(foldername, logger=logging):
+def removetree(foldername, logger=logging, **kwargs):
   """ Recursively remove a whole directory tree
 
   Any exceptions are redirected to the logging module.
@@ -167,7 +167,7 @@ def removetree(foldername, logger=logging):
   
   """
 
-  try: shutil.rmtree(foldername)
+  try: shutil.rmtree(foldername, **kwargs)
   except: 
     logger.debug(traceback.format_exc()+"\n")
     raise
