@@ -1,22 +1,10 @@
 fsync
 =====
 
-A Python-based backend for version-controlled Cloud / NAS / File Backup management **in development**.
-
-Use cases
----------
-Do you often acquire data on one device but work with the data on a different device? 
-If so, the established file synchronization solutions might not provide exactly what you need and this repository could help you automize your workflow.
-Typical use cases not only include scientific computations and their analysis, but can also come up with creative work like video and audio production.
-
-Contrary to a typical (potentially expensive) Cloud storage solution, this library is (by default) set up for one-way synchronization: 
-External changes to the destination folder are not automatically pushed to the local folder, unless you explicitly set up the reverse sync job. 
-
-Contrary to most back-up and mirroring software solutions, the files are copied to the destination folder in a literal way, which allows you to immediately start working with them. 
-(A lot of back-up solutions compress the files and store them in a format that is only readable by the same software.)
-
-`fsync` can also be used for simple backup jobs if those backups are accessed frequently enough to justify uncompressed storage.
-For example, this makes it very easy to roll back an individual file to a previous version.
+A Python-based backend for version-controlled Cloud / NAS / file synchronization and backup management.
+The current version is stable and tested for the features it provides. 
+The repository will only be updated in case it provides any significant additions compared to using rsync. 
+For now, this is not the case.
 
 Content
 -------
